@@ -107,7 +107,7 @@ async function findPAAContainer(page: Page): Promise<ElementHandle | null> {
  * Extract accordion items from a container
  */
 async function getAccordionItems(page: Page, containerHandle: ElementHandle): Promise<Array<{ question: string; orderIdx: number; path: string }>> {
-  return await page.evaluate((container) => {
+  return await containerHandle.evaluate((container: any) => {
     function domPath(el: Element | null): string {
       if (!el || !el.parentElement) return '';
       const idx = Array.from(el.parentElement.children).indexOf(el) + 1;
@@ -125,7 +125,7 @@ async function getAccordionItems(page: Page, containerHandle: ElementHandle): Pr
         path: domPath(root || btn)
       };
     }).filter(x => x.question && x.question.length > 2);
-  }, containerHandle);
+  });
 }
 
 /**
