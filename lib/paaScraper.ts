@@ -91,7 +91,9 @@ async function findPAAContainer(page: Page): Promise<ElementHandle | null> {
       const h = await page.$(xpath);
       if (h) {
         const parent = await h.evaluateHandle(el => el.parentElement);
-        return parent as ElementHandle;
+        if (parent) {
+          return parent.asElement() as ElementHandle;
+        }
       }
     } catch {
       // Continue to next heading
