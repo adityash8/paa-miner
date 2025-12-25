@@ -1,0 +1,474 @@
+<!-- PAA Dominator - Tracker Dashboard Embed -->
+<!-- Add this to a Webflow page using Custom Code embed -->
+
+<div id="paa-tracker-dashboard">
+  <!-- Stats Cards -->
+  <div class="paa-stats-grid">
+    <div class="paa-stat-card">
+      <div class="paa-stat-value" id="stat-keywords">-</div>
+      <div class="paa-stat-label">Keywords Tracked</div>
+    </div>
+    <div class="paa-stat-card">
+      <div class="paa-stat-value" id="stat-questions">-</div>
+      <div class="paa-stat-label">Active Questions</div>
+    </div>
+    <div class="paa-stat-card paa-stat-highlight">
+      <div class="paa-stat-value" id="stat-new">-</div>
+      <div class="paa-stat-label">New This Week</div>
+    </div>
+    <div class="paa-stat-card">
+      <div class="paa-stat-value" id="stat-opportunities">-</div>
+      <div class="paa-stat-label">Opportunities</div>
+    </div>
+  </div>
+
+  <!-- Add Keyword Section -->
+  <div class="paa-add-keyword">
+    <input type="text" id="new-keyword" class="paa-input" placeholder="Add keyword to track...">
+    <select id="new-region" class="paa-select">
+      <option value="us">🇺🇸 US</option>
+      <option value="gb">🇬🇧 UK</option>
+      <option value="au">🇦🇺 AU</option>
+      <option value="ca">🇨🇦 CA</option>
+      <option value="de">🇩🇪 DE</option>
+      <option value="in">🇮🇳 IN</option>
+    </select>
+    <select id="new-interval" class="paa-select">
+      <option value="6">Every 6 hours</option>
+      <option value="12">Every 12 hours</option>
+      <option value="24" selected>Daily</option>
+      <option value="168">Weekly</option>
+    </select>
+    <button id="add-keyword-btn" class="paa-btn paa-btn-primary">+ Add Keyword</button>
+  </div>
+
+  <!-- Tabs -->
+  <div class="paa-tabs">
+    <button class="paa-tab active" data-tab="keywords">Keywords</button>
+    <button class="paa-tab" data-tab="changes">Change Feed</button>
+    <button class="paa-tab" data-tab="opportunities">Opportunities</button>
+  </div>
+
+  <!-- Keywords Tab -->
+  <div id="tab-keywords" class="paa-tab-content active">
+    <div class="paa-table-container">
+      <table class="paa-table">
+        <thead>
+          <tr>
+            <th>Keyword</th>
+            <th>Region</th>
+            <th>Questions</th>
+            <th>Changes (7d)</th>
+            <th>Last Check</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="keywords-table-body"></tbody>
+      </table>
+    </div>
+    <div id="keywords-empty" class="paa-empty-state hidden">
+      <p>No keywords being tracked yet.</p>
+      <p>Add your first keyword above to get started!</p>
+    </div>
+  </div>
+
+  <!-- Changes Tab -->
+  <div id="tab-changes" class="paa-tab-content hidden">
+    <div class="paa-filters">
+      <select id="change-type-filter" class="paa-select">
+        <option value="all">All Changes</option>
+        <option value="added">New Questions</option>
+        <option value="removed">Removed</option>
+        <option value="position_change">Position Changes</option>
+      </select>
+      <select id="change-days-filter" class="paa-select">
+        <option value="1">Last 24h</option>
+        <option value="7" selected>Last 7 days</option>
+        <option value="30">Last 30 days</option>
+      </select>
+    </div>
+    <div id="changes-feed" class="paa-changes-feed"></div>
+    <div id="changes-empty" class="paa-empty-state hidden">
+      <p>No changes detected in the selected period.</p>
+    </div>
+  </div>
+
+  <!-- Opportunities Tab -->
+  <div id="tab-opportunities" class="paa-tab-content hidden">
+    <div class="paa-opportunities-header">
+      <p>New PAA questions without generated content — sorted by frequency</p>
+      <button id="bulk-generate-btn" class="paa-btn paa-btn-primary" disabled>
+        Generate Selected (<span id="selected-opps-count">0</span>)
+      </button>
+    </div>
+    <div id="opportunities-list" class="paa-opportunities-list"></div>
+    <div id="opportunities-empty" class="paa-empty-state hidden">
+      <p>No new opportunities at the moment.</p>
+      <p>All detected questions have generated content!</p>
+    </div>
+  </div>
+
+  <!-- Keyword Detail Modal -->
+  <div id="keyword-detail-modal" class="paa-modal hidden">
+    <div class="paa-modal-content paa-modal-large">
+      <div class="paa-modal-header">
+        <h3 id="detail-keyword-title">-</h3>
+        <button class="paa-modal-close">&times;</button>
+      </div>
+      <div class="paa-modal-body">
+        <div class="paa-detail-section">
+          <h4>Current Questions</h4>
+          <div id="detail-questions" class="paa-detail-questions"></div>
+        </div>
+        <div class="paa-detail-section">
+          <h4>Recent Changes</h4>
+          <div id="detail-changes" class="paa-detail-changes"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const API_BASE = 'https://your-worker.workers.dev/api';
+  let currentProjectId = null;
+  let authToken = null;
+
+  // Get auth token
+  function getAuthToken() {
+    if (window.$memberstackDom) {
+      return window.$memberstackDom.getCurrentToken().then(token => {
+        authToken = token;
+        return token;
+      });
+    }
+    authToken = localStorage.getItem('paa_auth_token');
+    return Promise.resolve(authToken);
+  }
+
+  // API call helper
+  async function apiCall(endpoint, options = {}) {
+    const token = await getAuthToken();
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : '',
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || 'Request failed');
+    }
+
+    return response.json();
+  }
+
+  // Load dashboard data
+  async function loadDashboard() {
+    try {
+      // Get or create project
+      const projects = await apiCall('/projects');
+      if (projects.projects.length === 0) {
+        // Create default project
+        const newProject = await apiCall('/projects', {
+          method: 'POST',
+          body: JSON.stringify({ name: 'My PAA Tracker' }),
+        });
+        currentProjectId = newProject.id;
+      } else {
+        currentProjectId = projects.projects[0].id;
+      }
+
+      // Load dashboard data
+      const [dashboard, changes, opportunities] = await Promise.all([
+        apiCall(`/tracker/dashboard?project_id=${currentProjectId}`),
+        apiCall(`/tracker/changes?project_id=${currentProjectId}&days=7`),
+        apiCall(`/tracker/opportunities?project_id=${currentProjectId}`),
+      ]);
+
+      // Update stats
+      document.getElementById('stat-keywords').textContent = dashboard.summary.total_keywords;
+      document.getElementById('stat-questions').textContent = dashboard.summary.total_questions;
+      document.getElementById('stat-new').textContent = dashboard.summary.new_questions_7d;
+      document.getElementById('stat-opportunities').textContent = dashboard.summary.opportunities;
+
+      // Render data
+      renderKeywordsTable(dashboard.keywords);
+      renderChangesFeed(changes.changes);
+      renderOpportunities(opportunities.opportunities);
+    } catch (error) {
+      console.error('Failed to load dashboard:', error);
+    }
+  }
+
+  // Render keywords table
+  function renderKeywordsTable(keywords) {
+    const tbody = document.getElementById('keywords-table-body');
+    const empty = document.getElementById('keywords-empty');
+
+    if (keywords.length === 0) {
+      tbody.innerHTML = '';
+      empty.classList.remove('hidden');
+      return;
+    }
+
+    empty.classList.add('hidden');
+    tbody.innerHTML = keywords.map(k => `
+      <tr data-id="${k.id}">
+        <td>
+          <a href="#" class="keyword-link" data-id="${k.id}">${escapeHtml(k.keyword)}</a>
+        </td>
+        <td>${regionFlag(k.region)} ${k.region.toUpperCase()}</td>
+        <td>${k.current_questions}</td>
+        <td class="${k.changes_7d > 0 ? 'paa-has-changes' : ''}">
+          ${k.changes_7d > 0 ? '+' + k.changes_7d : '-'}
+        </td>
+        <td>${timeAgo(k.last_checked_at)}</td>
+        <td>
+          <button class="paa-btn-icon" onclick="refreshKeyword('${k.id}')" title="Refresh">↻</button>
+          <button class="paa-btn-icon" onclick="viewKeyword('${k.id}')" title="View">👁</button>
+          <button class="paa-btn-icon paa-btn-danger" onclick="deleteKeyword('${k.id}')" title="Delete">×</button>
+        </td>
+      </tr>
+    `).join('');
+
+    // Add click handlers for keyword links
+    tbody.querySelectorAll('.keyword-link').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        viewKeyword(link.dataset.id);
+      });
+    });
+  }
+
+  // Render changes feed
+  function renderChangesFeed(changes) {
+    const container = document.getElementById('changes-feed');
+    const empty = document.getElementById('changes-empty');
+
+    if (changes.length === 0) {
+      container.innerHTML = '';
+      empty.classList.remove('hidden');
+      return;
+    }
+
+    empty.classList.add('hidden');
+    container.innerHTML = changes.map(c => `
+      <div class="paa-change-item paa-change-${c.change_type}">
+        <span class="paa-change-badge">${changeBadge(c.change_type)}</span>
+        <div class="paa-change-content">
+          <span class="paa-change-keyword">${escapeHtml(c.keyword)}</span>
+          <span class="paa-change-question">${escapeHtml(c.question)}</span>
+          ${c.change_type === 'position_change' ?
+            `<span class="paa-change-position">${c.old_position + 1} → ${c.new_position + 1}</span>` : ''}
+        </div>
+        <span class="paa-change-time">${timeAgo(c.detected_at)}</span>
+        <button class="paa-btn paa-btn-sm" onclick="generateForQuestion('${escapeHtml(c.question)}')">
+          Generate
+        </button>
+      </div>
+    `).join('');
+  }
+
+  // Render opportunities
+  function renderOpportunities(opportunities) {
+    const container = document.getElementById('opportunities-list');
+    const empty = document.getElementById('opportunities-empty');
+
+    if (opportunities.length === 0) {
+      container.innerHTML = '';
+      empty.classList.remove('hidden');
+      return;
+    }
+
+    empty.classList.add('hidden');
+    container.innerHTML = opportunities.map(o => `
+      <div class="paa-opportunity-item">
+        <input type="checkbox" class="opp-checkbox" data-id="${o.id}" data-question="${escapeHtml(o.question)}" data-type="${o.type}">
+        <div class="paa-opportunity-content">
+          <span class="paa-opportunity-question">${escapeHtml(o.question)}</span>
+          <span class="paa-opportunity-meta">
+            From: ${escapeHtml(o.seed_keyword)} | Seen ${o.times_seen}x | Priority: ${o.priority_score}
+          </span>
+        </div>
+        <span class="paa-opportunity-score">${o.priority_score}</span>
+        <button class="paa-btn paa-btn-primary paa-btn-sm" onclick="generateSingle('${o.id}', '${escapeHtml(o.question)}', '${o.type}')">
+          Generate
+        </button>
+      </div>
+    `).join('');
+
+    // Add checkbox listeners
+    container.querySelectorAll('.opp-checkbox').forEach(cb => {
+      cb.addEventListener('change', updateSelectedOppsCount);
+    });
+  }
+
+  function updateSelectedOppsCount() {
+    const checked = document.querySelectorAll('.opp-checkbox:checked');
+    const count = checked.length;
+    document.getElementById('selected-opps-count').textContent = count;
+    document.getElementById('bulk-generate-btn').disabled = count === 0;
+  }
+
+  // View keyword detail
+  window.viewKeyword = async function(keywordId) {
+    try {
+      const data = await apiCall(`/tracker/keyword?id=${keywordId}`);
+
+      document.getElementById('detail-keyword-title').textContent =
+        `${data.keyword.keyword} (${data.keyword.region.toUpperCase()})`;
+
+      // Render questions
+      document.getElementById('detail-questions').innerHTML = data.current_questions.map((q, i) => `
+        <div class="paa-detail-question">
+          <span class="paa-q-position">#${i + 1}</span>
+          <span class="paa-q-text">${escapeHtml(q.question)}</span>
+          <span class="paa-q-stats">Seen ${q.times_seen}x</span>
+          ${q.has_content ? '<span class="paa-q-badge">Has content</span>' : ''}
+        </div>
+      `).join('');
+
+      // Render changes
+      document.getElementById('detail-changes').innerHTML = data.recent_changes.slice(0, 10).map(c => `
+        <div class="paa-change-item paa-change-${c.type}">
+          <span class="paa-change-badge">${changeBadge(c.type)}</span>
+          <span class="paa-change-question">${escapeHtml(c.question)}</span>
+          <span class="paa-change-time">${timeAgo(c.detected_at)}</span>
+        </div>
+      `).join('');
+
+      document.getElementById('keyword-detail-modal').classList.remove('hidden');
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  // Delete keyword
+  window.deleteKeyword = async function(keywordId) {
+    if (!confirm('Are you sure you want to delete this keyword?')) return;
+
+    try {
+      await apiCall(`/tracker/keywords/${keywordId}`, { method: 'DELETE' });
+      loadDashboard();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  // Refresh keyword
+  window.refreshKeyword = async function(keywordId) {
+    try {
+      await apiCall(`/tracker/keywords/${keywordId}/refresh`, { method: 'POST' });
+      loadDashboard();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  // Add keyword
+  async function addKeyword() {
+    const keyword = document.getElementById('new-keyword').value.trim();
+    if (!keyword) {
+      alert('Please enter a keyword');
+      return;
+    }
+
+    const region = document.getElementById('new-region').value;
+    const interval = parseInt(document.getElementById('new-interval').value);
+
+    try {
+      await apiCall('/tracker/keywords', {
+        method: 'POST',
+        body: JSON.stringify({
+          project_id: currentProjectId,
+          keyword,
+          region,
+          interval_hours: interval,
+        }),
+      });
+
+      document.getElementById('new-keyword').value = '';
+      loadDashboard();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  }
+
+  // Utility functions
+  function changeBadge(type) {
+    const badges = {
+      'added': '🆕 New',
+      'removed': '🚫 Gone',
+      'position_change': '↕️ Moved',
+    };
+    return badges[type] || type;
+  }
+
+  function regionFlag(region) {
+    const flags = {
+      us: '🇺🇸', gb: '🇬🇧', au: '🇦🇺', ca: '🇨🇦',
+      de: '🇩🇪', in: '🇮🇳', fr: '🇫🇷', es: '🇪🇸',
+      it: '🇮🇹', nl: '🇳🇱', br: '🇧🇷', mx: '🇲🇽', jp: '🇯🇵'
+    };
+    return flags[region] || '🌐';
+  }
+
+  function timeAgo(date) {
+    if (!date) return 'Never';
+    const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+    if (seconds < 60) return 'Just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Tab switching
+  document.querySelectorAll('.paa-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.paa-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.paa-tab-content').forEach(c => c.classList.add('hidden'));
+      tab.classList.add('active');
+      document.getElementById(`tab-${tab.dataset.tab}`).classList.remove('hidden');
+    });
+  });
+
+  // Event listeners
+  document.getElementById('add-keyword-btn').addEventListener('click', addKeyword);
+  document.getElementById('new-keyword').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') addKeyword();
+  });
+
+  document.querySelector('#keyword-detail-modal .paa-modal-close').addEventListener('click', () => {
+    document.getElementById('keyword-detail-modal').classList.add('hidden');
+  });
+
+  // Filter listeners
+  document.getElementById('change-type-filter').addEventListener('change', async () => {
+    const type = document.getElementById('change-type-filter').value;
+    const days = document.getElementById('change-days-filter').value;
+    const changes = await apiCall(`/tracker/changes?project_id=${currentProjectId}&days=${days}&type=${type}`);
+    renderChangesFeed(changes.changes);
+  });
+
+  document.getElementById('change-days-filter').addEventListener('change', async () => {
+    const type = document.getElementById('change-type-filter').value;
+    const days = document.getElementById('change-days-filter').value;
+    const changes = await apiCall(`/tracker/changes?project_id=${currentProjectId}&days=${days}&type=${type}`);
+    renderChangesFeed(changes.changes);
+  });
+
+  // Initialize
+  getAuthToken().then(loadDashboard);
+})();
+</script>

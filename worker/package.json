@@ -1,0 +1,20 @@
+{
+  "name": "paa-dominator-worker",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create paa-dominator-db",
+    "db:migrate": "wrangler d1 execute paa-dominator-db --local --file=./migrations/0001_initial.sql",
+    "db:migrate:prod": "wrangler d1 execute paa-dominator-db --remote --file=./migrations/0001_initial.sql"
+  },
+  "dependencies": {
+    "hono": "^4.3.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240529.0",
+    "typescript": "^5.4.5",
+    "wrangler": "^3.57.0"
+  }
+}

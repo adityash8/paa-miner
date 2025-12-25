@@ -1,0 +1,21 @@
+name = "paa-dominator"
+main = "src/index.ts"
+compatibility_date = "2024-05-29"
+
+[triggers]
+crons = ["0 */6 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "paa-dominator-db"
+database_id = "YOUR_DATABASE_ID_HERE"
+
+[vars]
+APP_URL = "https://yourdomain.com"
+EMAIL_FROM = "notifications@yourdomain.com"
+
+# Secrets (set via wrangler secret put):
+# SERPAPI_KEY
+# ANTHROPIC_API_KEY
+# MEMBERSTACK_SECRET_KEY
+# RESEND_API_KEY
